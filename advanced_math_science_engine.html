@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Math & Science Engine</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/mathlive"></script>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .tab-btn.active { border-bottom: 3px solid #6366f1; color: #4f46e5; font-weight: 700; background-color: #e0e7ff; }
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); }
+        math-field { font-size: 1.5rem; background-color: white; border-radius: 0.75rem; border: 2px solid #e2e8f0; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); padding: 0.5rem 1rem; width: 100%; transition: all 0.2s; }
+        math-field:focus-within { border-color: #6366f1; outline: none; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2); }
+    </style>
+</head>
+<body class="text-slate-800 min-h-screen pb-20">
+
+    <nav class="bg-indigo-600 text-white shadow-lg sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center gap-3">
+                    <span class="text-2xl">🧮</span>
+                    <span class="font-bold text-xl tracking-tight">Advanced Math Engine</span>
+                </div>
+                <div class="hidden md:flex text-sm bg-indigo-700/50 px-3 py-1.5 rounded-full border border-indigo-500">
+                    <span id="pyodide-status" class="flex items-center gap-2 font-medium">
+                        <span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span></span>
+                        กำลังโหลด Python Engine...
+                    </span>
+                </div>
+            </div>
+        </div>
+        <!-- Tabs -->
+        <div class="flex overflow-x-auto hide-scrollbar bg-white text-slate-600 shadow-sm font-medium">
+            <button onclick="switchTab('tab-solve')" id="btn-tab-solve" class="tab-btn active px-5 py-3 whitespace-nowrap transition-colors hover:bg-slate-50">1. แก้สมการ (Solver)</button>
+            <button onclick="switchTab('tab-dynamics')" id="btn-tab-dynamics" class="tab-btn px-5 py-3 whitespace-nowrap transition-colors hover:bg-slate-50">2. แบบจำลอง (Applied Math)</button>
+            <button onclick="switchTab('tab-fit')" id="btn-tab-fit" class="tab-btn px-5 py-3 whitespace-nowrap transition-colors hover:bg-slate-50">3. สถิติ & ฟิตติ้ง (Data Fit)</button>
+            <button onclick="switchTab('tab-opt')" id="btn-tab-opt" class="tab-btn px-5 py-3 whitespace-nowrap transition-colors hover:bg-slate-50">4. หาจุดคุ้มทุน (Optimization)</button>
+            <button onclick="switchTab('tab-vector')" id="btn-tab-vector" class="tab-btn px-5 py-3 whitespace-nowrap transition-colors hover:bg-slate-50">5. สนามเวกเตอร์ (Vector Field)</button>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        
+        <div id="tab-solve" class="tab-content block animate-fade-in">
+            <div class="glass-panel p-6 rounded-2xl shadow-sm border border-slate-200">
+                <div class="flex justify-between items-center mb-4">
+                    <label class="font-bold text-slate-800 text-lg flex items-center gap-2">
+                        <span>กระดานสมการ (Equation Workspace)</span>
+                    </label>
+                    <button onclick="clearEquation()" class="bg-rose-50 hover:bg-rose-100 text-rose-600 px-4 py-2 rounded-xl font-bold transition-colors border border-rose-200 flex items-center shadow-sm text-sm">
+                        🧹 ล้างสมการ
+                    </button>
+                </div>
+                
+                <div class="relative w-full mb-6">
+                    <!-- Math field เริ่มต้นด้วยค่าว่างเปล่า -->
+                    <math-field id="math-input" style="padding-right: 140px;"></math-field>
+                    
+                    <!-- ปุ่มเปิดแป้นพิมพ์ บังคับเด้ง 100% -->
+                    <button onclick="forceShowKeyboard()" class="absolute right-3 top-1/2 transform -translate-y-1/2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-2 rounded-lg shadow-sm border border-indigo-200 transition-colors z-10 flex items-center gap-2 text-sm font-bold cursor-pointer">
+                        ⌨️ แป้นพิมพ์
+                    </button>
+                </div>
+                
+                <div class="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 mb-6 flex items-start gap-3 text-sm text-indigo-900">
+                    <span class="text-xl">💡</span>
+                    <div>
+                        <span class="font-bold block mb-1">คำแนะนำตัวแปร (Variables):</span>
+                        ปล่อยว่างไว้ได้เลย! ระบบจะค้นหาตัวแปรภาษาอังกฤษหรือกรีกในสมการของคุณ (เช่น x, y, θ, α) และแก้หาคำตอบให้โดยอัตโนมัติ 
+                        หากมีหลายตัวแปร ระบบจะพยายามหาคำตอบของตัวแปรที่พบเป็นตัวแรก
+                    </div>
+                </div>
+                
+                <button onclick="solveEquation()" id="solve-btn" disabled class="w-full bg-slate-300 text-slate-500 font-bold py-4 rounded-xl shadow-sm transition-all duration-300 text-lg flex justify-center items-center gap-2">
+                    ⏳ กรุณารอ Python โหลดสักครู่...
+                </button>
+                
+                <div id="solver-result" class="mt-6 p-6 bg-slate-50 rounded-xl border border-slate-200 min-h-[120px] text-lg overflow-x-auto text-center hidden"></div>
+            </div>
+        </div>
+
+        <div id="tab-dynamics" class="tab-content hidden animate-fade-in">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="glass-panel p-6 rounded-2xl shadow-sm lg:col-span-1 border border-slate-200">
+                    <h3 class="font-bold text-lg mb-4 text-indigo-800">ตั้งค่าแบบจำลอง (Controls)</h3>
+                    <select id="dyn-preset" class="w-full p-3 rounded-xl border border-slate-300 bg-slate-50 mb-4 font-medium text-indigo-700 outline-none focus:border-indigo-500" onchange="loadDynPreset()">
+                        <option value="lotka">Lotka-Volterra (Predator-Prey)</option>
+                        <option value="lorenz">Lorenz Attractor (Chaos 3D)</option>
+                        <option value="pendulum">Damped Driven Pendulum</option>
+                    </select>
+                    
+                    <div id="dyn-params" class="space-y-4 mb-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <!-- Sliders will be injected here -->
+                    </div>
+                    
+                    <button onclick="runDynamics()" id="dyn-btn" disabled class="w-full bg-slate-300 text-slate-500 font-bold py-3 rounded-xl transition-all">รอโหลด Python...</button>
+                </div>
+                <div class="glass-panel p-2 rounded-2xl shadow-sm lg:col-span-2 border border-slate-200 bg-white">
+                    <div id="dyn-plot1" class="w-full h-[300px]"></div>
+                    <div id="dyn-plot2" class="w-full h-[350px] mt-4 border-t border-slate-100 pt-4"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-fit" class="tab-content hidden animate-fade-in">
+             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="glass-panel p-6 rounded-2xl shadow-sm lg:col-span-1 border border-slate-200">
+                    <h3 class="font-bold text-lg mb-4 text-indigo-800">ข้อมูลและโมเดล (Data & Model)</h3>
+                    <div class="flex gap-2 mb-4">
+                        <button onclick="loadDataPreset('linear')" class="flex-1 bg-slate-100 hover:bg-slate-200 text-xs font-bold py-2 rounded-lg border border-slate-300">Linear</button>
+                        <button onclick="loadDataPreset('exp')" class="flex-1 bg-slate-100 hover:bg-slate-200 text-xs font-bold py-2 rounded-lg border border-slate-300">Exponential</button>
+                        <button onclick="loadDataPreset('sine')" class="flex-1 bg-slate-100 hover:bg-slate-200 text-xs font-bold py-2 rounded-lg border border-slate-300">Oscillation</button>
+                    </div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1">จุดข้อมูล (X, Y แยกด้วยคอมม่า):</label>
+                    <textarea id="data-input" rows="5" class="w-full p-3 rounded-xl border border-slate-300 bg-slate-50 mb-4 font-mono text-sm text-slate-700" placeholder="1, 2.5&#10;2, 4.1&#10;3, 7.8"></textarea>
+                    
+                    <label class="block text-sm font-bold text-slate-700 mb-1">สมการเพื่อ Fit (ใช้ตัวแปร x):</label>
+                    <select id="fit-type" class="w-full p-3 rounded-xl border border-slate-300 bg-slate-50 mb-2 font-medium" onchange="toggleCustomFit()">
+                        <option value="linear">Linear: a*x + b</option>
+                        <option value="poly2">Quadratic: a*x**2 + b*x + c</option>
+                        <option value="exp">Exponential: a * exp(b*x)</option>
+                        <option value="power">Power Law: a * x**b</option>
+                        <option value="custom">กำหนดสมการเอง (Custom)</option>
+                    </select>
+                    <input type="text" id="fit-custom" class="w-full p-3 rounded-xl border border-slate-300 bg-white mb-4 hidden" placeholder="เช่น a*sin(b*x) + c">
+                    
+                    <button onclick="runFitting()" id="fit-btn" disabled class="w-full bg-slate-300 text-slate-500 font-bold py-3 rounded-xl transition-all">รอโหลด Python...</button>
+                </div>
+                <div class="glass-panel p-4 rounded-2xl shadow-sm lg:col-span-2 border border-slate-200 bg-white flex flex-col">
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                            <div class="text-sm font-bold text-indigo-800">R² Score (ความแม่นยำ)</div>
+                            <div id="fit-r2" class="text-2xl font-black text-indigo-600">-</div>
+                        </div>
+                        <div class="bg-rose-50 p-4 rounded-xl border border-rose-100">
+                            <div class="text-sm font-bold text-rose-800">RMSE (ความคลาดเคลื่อน)</div>
+                            <div id="fit-rmse" class="text-2xl font-black text-rose-600">-</div>
+                        </div>
+                    </div>
+                    <div id="fit-params" class="text-sm bg-slate-800 text-green-400 p-4 rounded-xl font-mono mb-4 min-h-[80px] overflow-auto">รอการคำนวณพารามิเตอร์...</div>
+                    <div id="fit-plot" class="w-full h-[350px] flex-grow"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-opt" class="tab-content hidden animate-fade-in">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="glass-panel p-6 rounded-2xl shadow-sm lg:col-span-1 border border-slate-200">
+                    <h3 class="font-bold text-lg mb-4 text-indigo-800">โจทย์ปัญหา 2D (Linear Prog.)</h3>
+                    <div class="flex gap-2 mb-4">
+                        <button onclick="loadOptPreset('profit')" class="flex-1 bg-green-50 text-green-700 text-xs font-bold py-2 rounded-lg border border-green-200">Max Profit</button>
+                        <button onclick="loadOptPreset('cost')" class="flex-1 bg-rose-50 text-rose-700 text-xs font-bold py-2 rounded-lg border border-rose-200">Min Cost</button>
+                    </div>
+                    
+                    <label class="block text-sm font-bold text-slate-700 mb-1">เป้าหมาย (Objective Z):</label>
+                    <div class="flex gap-2 mb-4">
+                        <select id="opt-type" class="p-2 rounded-xl border border-slate-300 bg-slate-50 font-bold text-indigo-700 w-1/3 outline-none">
+                            <option value="max">Maximize</option>
+                            <option value="min">Minimize</option>
+                        </select>
+                        <input type="text" id="opt-obj" class="w-2/3 p-2 rounded-xl border border-slate-300 bg-white font-mono text-sm" placeholder="เช่น 40*x1 + 30*x2">
+                    </div>
+                    
+                    <label class="block text-sm font-bold text-slate-700 mb-1">ข้อจำกัด (Constraints): <span class="font-normal text-xs text-slate-500">(บรรทัดละ 1 ข้อ)</span></label>
+                    <textarea id="opt-cons" rows="4" class="w-full p-3 rounded-xl border border-slate-300 bg-slate-50 mb-4 font-mono text-sm" placeholder="x1 + 2*x2 <= 40&#10;4*x1 + 3*x2 <= 120"></textarea>
+                    
+                    <button onclick="runOptimization()" id="opt-btn" disabled class="w-full bg-slate-300 text-slate-500 font-bold py-3 rounded-xl transition-all">รอโหลด Python...</button>
+                </div>
+                <div class="glass-panel p-4 rounded-2xl shadow-sm lg:col-span-2 border border-slate-200 bg-white flex flex-col">
+                    <div id="opt-result-box" class="bg-indigo-50 p-4 rounded-xl border border-indigo-200 mb-4 hidden">
+                        <div class="font-bold text-indigo-900 mb-2">🏆 ผลลัพธ์ที่ดีที่สุด (Optimal Solution):</div>
+                        <div id="opt-ans" class="text-lg font-mono text-indigo-700"></div>
+                    </div>
+                    <div id="opt-plot" class="w-full h-[400px] flex-grow"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-vector" class="tab-content hidden animate-fade-in">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="glass-panel p-6 rounded-2xl shadow-sm lg:col-span-1 border border-slate-200">
+                    <h3 class="font-bold text-lg mb-4 text-indigo-800">สนามเวกเตอร์ (Vector Field)</h3>
+                    
+                    <label class="block text-sm font-bold text-slate-700 mb-1">มิติ (Dimension):</label>
+                    <select id="vec-dim" class="w-full p-3 rounded-xl border border-slate-300 bg-slate-50 mb-4 font-medium" onchange="loadVecPreset()">
+                        <option value="2d">2D Vector Field & Heatmap</option>
+                        <option value="3d">3D Vector Field (Cones)</option>
+                    </select>
+
+                    <label class="block text-sm font-bold text-slate-700 mb-1">รูปแบบ (Preset):</label>
+                    <select id="vec-preset" class="w-full p-3 rounded-xl border border-slate-300 bg-slate-50 mb-4 font-medium" onchange="loadVecPreset()">
+                        <!-- Options injected by JS -->
+                    </select>
+                    
+                    <div id="vec-params" class="space-y-4 mb-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <!-- Inputs injected by JS -->
+                    </div>
+                    
+                    <button onclick="runVectorField()" id="vec-btn" disabled class="w-full bg-slate-300 text-slate-500 font-bold py-3 rounded-xl transition-all">รอโหลด Python...</button>
+                </div>
+                <div class="glass-panel p-2 rounded-2xl shadow-sm lg:col-span-2 border border-slate-200 bg-white">
+                    <div id="vec-plot" class="w-full h-[500px]"></div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // Tab Navigation Logic
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('active', 'border-b-[3px]', 'border-indigo-600', 'text-indigo-700', 'bg-indigo-50');
+            });
+            document.getElementById(tabId).classList.remove('hidden');
+            const activeBtn = document.getElementById('btn-' + tabId);
+            activeBtn.classList.add('active', 'border-b-[3px]', 'border-indigo-600', 'text-indigo-700', 'bg-indigo-50');
+            
+            // Re-render plotly charts if they exist to fix resizing issues when unhidden
+            window.dispatchEvent(new Event('resize'));
+        }
+
+        function clearEquation() {
+            const mf = document.getElementById('math-input');
+            mf.value = '';
+            document.getElementById('solver-result').innerHTML = '';
+            document.getElementById('solver-result').classList.add('hidden');
+        }
+
+        function forceShowKeyboard() {
+            if (window.mathVirtualKeyboard) {
+                window.mathVirtualKeyboard.show();
+            }
+        }
+
+        // --- MathLive Keyboard Setup (Ultimate 3x3 Numpad + 12 Categories) ---
+        customElements.whenDefined('math-field').then(() => {
+            const mf = document.getElementById('math-input');
+            
+            // Force keyboard to be manual so it works on Desktop
+            mf.mathVirtualKeyboardPolicy = "manual";
+            mf.addEventListener('focusin', forceShowKeyboard);
+            mf.addEventListener('click', forceShowKeyboard);
+
+            if (window.mathVirtualKeyboard) {
+                window.mathVirtualKeyboard.layouts = [
+                    {
+                        label: 'พื้นฐาน (Basic)',
+                        tooltip: 'ตัวเลขและเครื่องหมายพื้นฐาน',
+                        rows: [
+                            ['+', '-', '\\times', '\\div', '=', '\\%', '7', '8', '9'],
+                            ['\\frac{#@}{#?}', '\\sqrt[#?]{#0}', '#@^{#?}', '#@_{#?}', '\\frac{\\partial}{\\partial x}', '\\int', '4', '5', '6'],
+                            ['x', 'y', 'z', '\\pi', '\\theta', 'f(x)', '1', '2', '3'],
+                            ['[left]', '[right]', '[backspace]', '[return]', '0', '.', ',']
+                        ]
+                    },
+                    {
+                        label: 'โครงสร้าง (Structs)',
+                        tooltip: 'เศษส่วน ยกกำลัง ราก วงเล็บ',
+                        rows: [
+                            ['\\frac{#@}{#?}', '#@/#?', '\\sqrt{#0}', '\\sqrt[#?]{#0}', '#@^2', '#@^{#?}'],
+                            ['#@_{#?}', '#@^{#?}_{#?}', '_{#?}#@', '^{#?}#@', '^{#?}_{#?}#@', '\\binom{#?}{#?}'],
+                            ['(#?)', '[#?]', '\\{#?\\}', '\\langle#?\\rangle', '|#?|', '\\|#?\\|'],
+                            ['[left]', '[right]', '[backspace]', '[return]']
+                        ]
+                    },
+                    {
+                        label: 'เปรียบเทียบ (Equals)',
+                        tooltip: 'สมการและอสมการ',
+                        rows: [
+                            ['=', '\\sim', '\\approx', '\\neq', '\\equiv', '\\pm', '\\mp'],
+                            ['<', '>', '\\le', '\\ge', '\\ll', '\\gg', '\\propto'],
+                            ['[left]', '[right]', '[backspace]', '[return]']
+                        ]
+                    },
+                    {
+                        label: 'แคลคูลัส (Calculus)',
+                        tooltip: 'ลิมิต อนุพันธ์ อินทิกรัล ซัมเมชัน',
+                        rows: [
+                            ['\\int', '\\iint', '\\iiint', '\\oint', '\\sum', '\\prod', '\\infty', '\\partial'],
+                            ['\\lim_{#?\\to#?}', '\\log', '\\ln', '\\sin', '\\cos', '\\tan', '\\nabla', 'd'],
+                            ['[left]', '[right]', '[backspace]', '[return]']
+                        ]
+                    },
+                    {
+                        label: 'เซต (Sets)',
+                        tooltip: 'ทฤษฎีเซต',
+                        rows: [
+                            ['\\cup', '\\cap', '\\in', '\\notin', '\\emptyset', '\\mathbb{R}', '\\mathbb{Z}', '\\mathbb{C}'],
+                            ['\\subset', '\\subseteq', '\\supset', '\\supseteq', '\\setminus', '\\forall', '\\exists', '\\therefore'],
+                            ['[left]', '[right]', '[backspace]', '[return]']
+                        ]
+                    },
+                    {
+                        label: 'เมทริกซ์ (Matrices)',
+                        tooltip: 'เวกเตอร์และเมทริกซ์',
+                        rows: [
+                            ['\\begin{pmatrix}#?&#?\\\\#?&#?\\end{pmatrix}', '\\begin{bmatrix}#?&#?\\\\#?&#?\\end{bmatrix}', '\\begin{vmatrix}#?&#?\\\\#?&#?\\end{vmatrix}', '\\vec{#?}'],
+                            ['\\begin{pmatrix}#?\\\\#?\\end{pmatrix}', '\\begin{bmatrix}#?\\\\#?\\end{bmatrix}', '\\hat{#?}', '\\bar{#?}'],
+                            ['[left]', '[right]', '[backspace]', '[return]']
+                        ]
+                    },
+                    {
+                        label: 'อักษรกรีก (Greek)',
+                        tooltip: 'อักษรกรีกทั้งหมด',
+                        rows: [
+                            ['\\alpha', '\\beta', '\\gamma', '\\delta', '\\epsilon', '\\zeta', '\\eta', '\\theta', '\\iota', '\\kappa'],
+                            ['\\lambda', '\\mu', '\\nu', '\\xi', '\\pi', '\\rho', '\\sigma', '\\tau', '\\upsilon', '\\phi'],
+                            ['\\chi', '\\psi', '\\omega', '\\Gamma', '\\Delta', '\\Theta', '\\Lambda', '\\Xi', '\\Pi', '\\Sigma', '\\Phi', '\\Psi', '\\Omega'],
+                            ['[left]', '[right]', '[backspace]', '[return]']
+                        ]
+                    }
+                ];
+            }
+        });
+
+        // --- Global Variables for Pyodide ---
+        let pyodideReady = false;
+        let pyodide = null;
+        let vDim = "2d"; // global vector dimension tracker
+
+        // --- Helper Function: Format LaTeX nicely ---
+        function formatLatex(latexStr) {
+            return `$$${latexStr}$$`;
+        }
+
+        async function initPyodide() {
+            try {
+                pyodide = await loadPyodide();
+                await pyodide.loadPackage(['sympy', 'numpy', 'scipy']);
+                
+                // Load core python engine logic
+                const pyCode = `
+import sympy as sp
+import numpy as np
+from scipy.integrate import solve_ivp
+from scipy.optimize import curve_fit, linprog
+import json
+
+# ==========================================
+# 1. SOLVER ENGINE
+# ==========================================
+def solve_eq(latex_str):
+    try:
+        from sympy.parsing.latex import parse_latex
+        # ป้องกัน error กรณีพิมพ์เท่ากับ
+        if "=" in latex_str:
+            lhs_str, rhs_str = latex_str.split("=", 1)
+            lhs = parse_latex(lhs_str)
+            rhs = parse_latex(rhs_str)
+            eq = sp.Eq(lhs, rhs)
+        else:
+            eq = parse_latex(latex_str)
+        
+        symbols = list(eq.free_symbols)
+        if not symbols:
+            return json.dumps({"type": "info", "latex": sp.latex(eq), "msg": "ไม่พบตัวแปรในสมการ"})
+            
+        sol = sp.solve(eq, symbols[0])
+        ans_latex = ", ".join([sp.latex(s) for s in sol])
+        return json.dumps({
+            "type": "success", 
+            "var": sp.latex(symbols[0]),
+            "latex_eq": sp.latex(eq),
+            "ans": ans_latex
+        })
+    except Exception as e:
+        return json.dumps({"type": "error", "msg": str(e)})
+
+# ==========================================
+# 2. DYNAMICAL SYSTEMS ENGINE (RK4)
+# ==========================================
+def solve_dynamics(model, params):
+    t_span = (0, float(params['t_end']))
+    t_eval = np.linspace(0, float(params['t_end']), 1000)
+    
+    if model == "lotka":
+        alpha, beta, delta, gamma = params['alpha'], params['beta'], params['delta'], params['gamma']
+        def f(t, z):
+            x, y = z
+            return [alpha*x - beta*x*y, delta*x*y - gamma*y]
+        sol = solve_ivp(f, t_span, [params['x0'], params['y0']], t_eval=t_eval)
+        return json.dumps({"t": sol.t.tolist(), "x": sol.y[0].tolist(), "y": sol.y[1].tolist()})
+        
+    elif model == "lorenz":
+        sigma, rho, beta = params['sigma'], params['rho'], params['beta']
+        def f(t, z):
+            x, y, z_val = z
+            return [sigma*(y - x), x*(rho - z_val) - y, x*y - beta*z_val]
+        sol = solve_ivp(f, t_span, [params['x0'], params['y0'], params['z0']], t_eval=t_eval)
+        return json.dumps({"t": sol.t.tolist(), "x": sol.y[0].tolist(), "y": sol.y[1].tolist(), "z": sol.y[2].tolist()})
+        
+    elif model == "pendulum":
+        b, g, l, A, omega_d = params['b'], params['g'], params['l'], params['A'], params['omega_d']
+        def f(t, z):
+            theta, omega = z
+            return [omega, -b*omega - (g/l)*np.sin(theta) + A*np.cos(omega_d*t)]
+        sol = solve_ivp(f, t_span, [params['theta0'], params['omega0']], t_eval=t_eval)
+        return json.dumps({"t": sol.t.tolist(), "x": sol.y[0].tolist(), "y": sol.y[1].tolist()})
+
+# ==========================================
+# 3. DATA FITTING ENGINE
+# ==========================================
+def fit_data(x_data, y_data, fit_type, custom_eq=""):
+    x = np.array(x_data)
+    y = np.array(y_data)
+    
+    if fit_type == "linear":
+        def func(x, a, b): return a*x + b
+        p0 = [1, 1]
+    elif fit_type == "poly2":
+        def func(x, a, b, c): return a*x**2 + b*x + c
+        p0 = [1, 1, 1]
+    elif fit_type == "exp":
+        def func(x, a, b): return a * np.exp(b * x)
+        p0 = [1, 0.1]
+    elif fit_type == "power":
+        def func(x, a, b): return a * x**b
+        p0 = [1, 1]
+    
+    try:
+        popt, pcov = curve_fit(func, x, y, p0=p0, maxfev=10000)
+        y_pred = func(x, *popt)
+        
+        # Calculate Stats
+        ss_res = np.sum((y - y_pred)**2)
+        ss_tot = np.sum((y - np.mean(y))**2)
+        r2 = 1 - (ss_res / ss_tot)
+        rmse = np.sqrt(ss_res / len(y))
+        
+        # Smooth curve for plotting
+        x_smooth = np.linspace(min(x), max(x), 100)
+        y_smooth = func(x_smooth, *popt)
+        
+        return json.dumps({
+            "status": "ok",
+            "popt": popt.tolist(),
+            "r2": round(r2, 4),
+            "rmse": round(rmse, 4),
+            "x_smooth": x_smooth.tolist(),
+            "y_smooth": y_smooth.tolist()
+        })
+    except Exception as e:
+        return json.dumps({"status": "error", "msg": str(e)})
+
+# ==========================================
+# 4. OPTIMIZATION ENGINE
+# ==========================================
+def optimize_lp(obj_type, obj_coeffs, A_ub, b_ub):
+    c = np.array(obj_coeffs)
+    if obj_type == "max": c = -c # scipy mininimizes by default
+    
+    res = linprog(c, A_ub=A_ub, b_ub=b_ub, bounds=(0, None), method='highs')
+    
+    if res.success:
+        ans_z = -res.fun if obj_type == "max" else res.fun
+        return json.dumps({"status": "ok", "x": res.x.tolist(), "z": ans_z})
+    else:
+        return json.dumps({"status": "error", "msg": res.message})
+
+# ==========================================
+# 5. VECTOR CALCULUS ENGINE
+# ==========================================
+def calc_vector_field(preset, dim, grid_res=15):
+    if dim == "2d":
+        x = np.linspace(-5, 5, grid_res)
+        y = np.linspace(-5, 5, grid_res)
+        X, Y = np.meshgrid(x, y)
+        
+        if preset == "vortex":
+            U, V = -Y, X
+            Heat = np.ones_like(X) * 2 # Curl is constant 2
+            heat_name = "Curl (z)"
+        elif preset == "source":
+            U, V = X, Y
+            Heat = np.ones_like(X) * 2 # Div is constant 2
+            heat_name = "Divergence"
+        elif preset == "saddle":
+            U, V = X, -Y
+            Heat = np.zeros_like(X)
+            heat_name = "Potential"
+            
+        return json.dumps({
+            "dim": "2d", "x": x.tolist(), "y": y.tolist(),
+            "X": X.tolist(), "Y": Y.tolist(),
+            "U": U.tolist(), "V": V.tolist(),
+            "Heat": Heat.tolist(), "heat_name": heat_name
+        })
+    else:
+        x = np.linspace(-5, 5, 8)
+        y = np.linspace(-5, 5, 8)
+        z = np.linspace(-5, 5, 8)
+        X, Y, Z = np.meshgrid(x, y, z)
+        
+        if preset == "helix":
+            U, V, W = -Y, X, np.ones_like(Z)*2
+        elif preset == "magnetic":
+            # Current along Z axis
+            r2 = X**2 + Y**2 + 0.1
+            U, V, W = -Y/r2, X/r2, np.zeros_like(Z)
+            
+        return json.dumps({
+            "dim": "3d",
+            "X": X.flatten().tolist(), "Y": Y.flatten().tolist(), "Z": Z.flatten().tolist(),
+            "U": U.flatten().tolist(), "V": V.flatten().tolist(), "W": W.flatten().tolist()
+        })
+`;
+                await pyodide.runPythonAsync(pyCode);
+                
+                // UI Updates
+                document.getElementById('pyodide-status').innerHTML = '✅ Python Ready';
+                document.getElementById('pyodide-status').classList.replace('text-white', 'text-green-300');
+                
+                // Enable buttons
+                ['solve-btn', 'dyn-btn', 'fit-btn', 'opt-btn', 'vec-btn'].forEach(id => {
+                    const btn = document.getElementById(id);
+                    btn.disabled = false;
+                    btn.innerHTML = '⚡ คำนวณ (Calculate)';
+                    btn.classList.replace('bg-slate-300', 'bg-indigo-600');
+                    btn.classList.replace('text-slate-500', 'text-white');
+                    btn.classList.add('hover:bg-indigo-700', 'hover:shadow-lg');
+                });
+                
+                pyodideReady = true;
+                
+                // Load default presets
+                loadDynPreset();
+                loadDataPreset('linear');
+                loadOptPreset('profit');
+                loadVecPreset();
+
+            } catch (err) {
+                document.getElementById('pyodide-status').innerHTML = '❌ Error Loading Engine';
+                console.error("Pyodide Load Error:", err);
+            }
+        }
+
+        async function solveEquation() {
+            if (!pyodideReady) return;
+            const mf = document.getElementById('math-input');
+            const latex = mf.value;
+            const resBox = document.getElementById('solver-result');
+            
+            if (!latex) {
+                resBox.innerHTML = '<span class="text-rose-500 font-bold">⚠️ กรุณาพิมพ์สมการก่อนคำนวณครับ</span>';
+                resBox.classList.remove('hidden');
+                return;
+            }
+
+            resBox.innerHTML = '<span class="text-indigo-500 animate-pulse">กำลังประมวลผล...</span>';
+            resBox.classList.remove('hidden');
+
+            try {
+                // Escape backslashes for python string
+                const safeLatex = latex.replace(/\\/g, '\\\\');
+                const pyCode = `solve_eq("${safeLatex}")`;
+                const resultJson = await pyodide.runPythonAsync(pyCode);
+                const res = JSON.parse(resultJson);
+
+                if (res.type === 'error') {
+                    resBox.innerHTML = `<span class="text-rose-600 font-bold">⚠️ ข้อผิดพลาด: ไม่สามารถอ่านสมการได้ กรุณาตรวจสอบรูปแบบ (Syntax Error)</span>`;
+                } else if (res.type === 'info') {
+                    resBox.innerHTML = `
+                        <div class="text-slate-500 font-medium mb-2">${res.msg}</div>
+                        <math-field readonly class="border-none shadow-none bg-transparent mx-auto text-center">${res.latex}</math-field>
+                    `;
+                } else {
+                    resBox.innerHTML = `
+                        <div class="text-slate-500 font-medium mb-4">สมการของคุณ:</div>
+                        <math-field readonly class="border-none shadow-none bg-transparent mx-auto text-center mb-6 text-xl">${res.latex_eq}</math-field>
+                        <div class="text-indigo-600 font-bold mb-4">คำตอบ (Solution):</div>
+                        <math-field readonly class="border-none shadow-none bg-transparent mx-auto text-center text-2xl font-bold text-indigo-700">${res.var} = ${res.ans}</math-field>
+                    `;
+                }
+            } catch (err) {
+                resBox.innerHTML = `<span class="text-rose-600 font-bold">⚠️ เกิดข้อผิดพลาดในระบบ: ${err.message}</span>`;
+            }
+        }
+
+        const dynPresets = {
+            lotka: [
+                { id: 'alpha', label: 'อัตราเกิดเหยื่อ (α)', val: 0.1, min: 0, max: 2, step: 0.1 },
+                { id: 'beta', label: 'อัตราถูกกิน (β)', val: 0.02, min: 0, max: 0.1, step: 0.01 },
+                { id: 'delta', label: 'อัตราโตผู้ล่า (δ)', val: 0.01, min: 0, max: 0.1, step: 0.01 },
+                { id: 'gamma', label: 'อัตราตายผู้ล่า (γ)', val: 0.1, min: 0, max: 2, step: 0.1 },
+                { id: 'x0', label: 'เหยื่อเริ่มต้น (X₀)', val: 40, min: 1, max: 100, step: 1 },
+                { id: 'y0', label: 'ผู้ล่าเริ่มต้น (Y₀)', val: 9, min: 1, max: 100, step: 1 },
+                { id: 't_end', label: 'เวลาจำลอง (T)', val: 200, min: 10, max: 500, step: 10 }
+            ],
+            lorenz: [
+                { id: 'sigma', label: 'Prandtl (σ)', val: 10, min: 0, max: 30, step: 1 },
+                { id: 'rho', label: 'Rayleigh (ρ)', val: 28, min: 0, max: 50, step: 1 },
+                { id: 'beta', label: 'Geometry (β)', val: 2.667, min: 0, max: 5, step: 0.1 },
+                { id: 'x0', label: 'X₀', val: 1, min: -10, max: 10, step: 1 },
+                { id: 'y0', label: 'Y₀', val: 1, min: -10, max: 10, step: 1 },
+                { id: 'z0', label: 'Z₀', val: 1, min: -10, max: 10, step: 1 },
+                { id: 't_end', label: 'เวลาจำลอง (T)', val: 30, min: 10, max: 100, step: 5 }
+            ],
+            pendulum: [
+                { id: 'b', label: 'แรงต้าน (b)', val: 0.2, min: 0, max: 2, step: 0.1 },
+                { id: 'g', label: 'แรงโน้มถ่วง (g)', val: 9.81, min: 1, max: 20, step: 0.1 },
+                { id: 'l', label: 'ความยาว (l)', val: 1.0, min: 0.1, max: 5, step: 0.1 },
+                { id: 'A', label: 'แรงขับ (A)', val: 1.2, min: 0, max: 5, step: 0.1 },
+                { id: 'omega_d', label: 'ความถี่ขับ (ω_d)', val: 2/3, min: 0, max: 3, step: 0.1 },
+                { id: 'theta0', label: 'มุมเริ่มต้น (θ₀)', val: 0.2, min: -3.14, max: 3.14, step: 0.1 },
+                { id: 'omega0', label: 'ค.เร็วเริ่มต้น (ω₀)', val: 0, min: -5, max: 5, step: 0.1 },
+                { id: 't_end', label: 'เวลาจำลอง (T)', val: 50, min: 10, max: 200, step: 10 }
+            ]
+        };
+
+        function loadDynPreset() {
+            const model = document.getElementById('dyn-preset').value;
+            const params = dynPresets[model];
+            const container = document.getElementById('dyn-params');
+            container.innerHTML = '';
+            
+            params.forEach(p => {
+                container.innerHTML += `
+                    <div>
+                        <div class="flex justify-between text-xs font-bold text-slate-600 mb-1">
+                            <span>${p.label}</span>
+                            <span id="val_${p.id}" class="text-indigo-600">${p.val}</span>
+                        </div>
+                        <input type="range" id="param_${p.id}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.val}" class="w-full accent-indigo-600" oninput="document.getElementById('val_${p.id}').innerText = this.value; runDynamics();">
+                    </div>
+                `;
+            });
+            if(pyodideReady) runDynamics();
+        }
+
+        async function runDynamics() {
+            if (!pyodideReady) return;
+            const model = document.getElementById('dyn-preset').value;
+            const paramDefs = dynPresets[model];
+            let pyDictStr = "{";
+            paramDefs.forEach(p => {
+                pyDictStr += `'${p.id}': ${document.getElementById('param_' + p.id).value}, `;
+            });
+            pyDictStr += "}";
+
+            try {
+                const pyCode = `solve_dynamics('${model}', ${pyDictStr})`;
+                const res = JSON.parse(await pyodide.runPythonAsync(pyCode));
+                
+                const layout1 = { margin: {l: 40, r: 20, t: 30, b: 30}, template: 'plotly_white', font: {family: 'Inter'} };
+                const layout2 = { margin: {l: 40, r: 20, t: 30, b: 30}, template: 'plotly_white', font: {family: 'Inter'} };
+
+                if (model === 'lorenz') {
+                    // Time series
+                    Plotly.newPlot('dyn-plot1', [
+                        {x: res.t, y: res.x, name: 'X', mode: 'lines'},
+                        {x: res.t, y: res.y, name: 'Y', mode: 'lines'},
+                        {x: res.t, y: res.z, name: 'Z', mode: 'lines'}
+                    ], {...layout1, title: 'Time Series'});
+                    // 3D Phase Portrait
+                    Plotly.newPlot('dyn-plot2', [{
+                        x: res.x, y: res.y, z: res.z,
+                        mode: 'lines', type: 'scatter3d',
+                        line: {color: res.t, colorscale: 'Viridis', width: 4}
+                    }], {...layout2, title: '3D Phase Portrait', scene: {camera: {eye: {x: 1.5, y: 1.5, z: 1.2}}}});
+                } else {
+                    let name1 = model === 'lotka' ? 'Prey (เหยื่อ)' : 'Angle (มุม θ)';
+                    let name2 = model === 'lotka' ? 'Predator (ผู้ล่า)' : 'Velocity (ω)';
+                    
+                    Plotly.newPlot('dyn-plot1', [
+                        {x: res.t, y: res.x, name: name1, mode: 'lines', line: {color: '#3b82f6', width: 2}},
+                        {x: res.t, y: res.y, name: name2, mode: 'lines', line: {color: '#ef4444', width: 2}}
+                    ], {...layout1, title: 'Time Series'});
+                    
+                    Plotly.newPlot('dyn-plot2', [{
+                        x: res.x, y: res.y, mode: 'lines',
+                        line: {color: '#ec4899', width: 2} 
+                    }], {...layout2, title: 'Phase Portrait (2D)', xaxis: {title: name1}, yaxis: {title: name2}});
+                }
+            } catch (err) {
+                console.error("Dynamics Error:", err);
+            }
+        }
+
+        function toggleCustomFit() {
+            const isCustom = document.getElementById('fit-type').value === 'custom';
+            document.getElementById('fit-custom').classList.toggle('hidden', !isCustom);
+        }
+
+        function loadDataPreset(type) {
+            const dataInput = document.getElementById('data-input');
+            const typeSelect = document.getElementById('fit-type');
+            if (type === 'linear') {
+                dataInput.value = "1, 2.5\n2, 4.1\n3, 7.8\n4, 9.2\n5, 11.5\n6, 14.1";
+                typeSelect.value = "linear";
+            } else if (type === 'exp') {
+                dataInput.value = "0, 10\n1, 16\n2, 27\n3, 44\n4, 73\n5, 120";
+                typeSelect.value = "exp";
+            } else if (type === 'sine') {
+                dataInput.value = "0, 0.1\n1, 0.8\n2, 0.9\n3, 0.1\n4, -0.7\n5, -0.9\n6, -0.2";
+                typeSelect.value = "poly2"; // approx
+            }
+            toggleCustomFit();
+            if(pyodideReady) runFitting();
+        }
+
+        async function runFitting() {
+            if (!pyodideReady) return;
+            const rawData = document.getElementById('data-input').value.trim().split('\n');
+            let xArr = [], yArr = [];
+            rawData.forEach(row => {
+                const parts = row.split(',').map(n => parseFloat(n.trim()));
+                if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                    xArr.push(parts[0]);
+                    yArr.push(parts[1]);
+                }
+            });
+
+            if (xArr.length < 3) {
+                alert("ต้องมีจุดข้อมูลอย่างน้อย 3 จุด"); return;
+            }
+
+            const fitType = document.getElementById('fit-type').value;
+            const pyCode = `fit_data(${JSON.stringify(xArr)}, ${JSON.stringify(yArr)}, '${fitType}')`;
+            
+            try {
+                const res = JSON.parse(await pyodide.runPythonAsync(pyCode));
+                if (res.status === 'error') {
+                    alert("Fitting Error: " + res.msg); return;
+                }
+                
+                document.getElementById('fit-r2').innerText = res.r2;
+                document.getElementById('fit-rmse').innerText = res.rmse;
+                
+                let paramNames = ['a', 'b', 'c', 'd'];
+                let paramStr = '';
+                res.popt.forEach((val, idx) => {
+                    paramStr += `${paramNames[idx]} = ${val.toPrecision(5)}<br>`;
+                });
+                document.getElementById('fit-params').innerHTML = paramStr;
+
+                const traceData = {x: xArr, y: yArr, mode: 'markers', name: 'Raw Data', marker: {size: 10, color: '#6366f1'}};
+                const traceFit = {x: res.x_smooth, y: res.y_smooth, mode: 'lines', name: 'Fitted Curve', line: {color: '#ef4444', width: 3}};
+                
+                Plotly.newPlot('fit-plot', [traceData, traceFit], {
+                    template: 'plotly_white', font: {family: 'Inter'},
+                    margin: {l: 40, r: 20, t: 20, b: 30},
+                    hovermode: 'closest'
+                });
+
+            } catch (err) {
+                console.error("Fitting Error:", err);
+            }
+        }
+
+        function loadOptPreset(type) {
+            if (type === 'profit') {
+                document.getElementById('opt-type').value = 'max';
+                document.getElementById('opt-obj').value = '40, 30'; // c1, c2
+                document.getElementById('opt-cons').value = "1, 2, 40\n4, 3, 120"; // A1, A2, b
+            } else {
+                document.getElementById('opt-type').value = 'min';
+                document.getElementById('opt-obj').value = '2, 3'; 
+                document.getElementById('opt-cons').value = "-1, -2, -10\n-2, -1, -8"; // Negate for >= constraints
+            }
+            if(pyodideReady) runOptimization();
+        }
+
+        async function runOptimization() {
+            if (!pyodideReady) return;
+            const objType = document.getElementById('opt-type').value;
+            const objStr = document.getElementById('opt-obj').value;
+            const consStr = document.getElementById('opt-cons').value.trim().split('\n');
+            
+            const c = objStr.split(',').map(n => parseFloat(n.trim()));
+            let A = [], b = [];
+            
+            consStr.forEach(row => {
+                const parts = row.split(',').map(n => parseFloat(n.trim()));
+                if (parts.length === 3) {
+                    A.push([parts[0], parts[1]]);
+                    b.push(parts[2]);
+                }
+            });
+
+            if (c.length !== 2 || A.length === 0) {
+                alert("รูปแบบไม่ถูกต้อง (รองรับ 2 ตัวแปร x1, x2 เท่านั้นสำหรับ 2D Plot) ให้กรอกเป็น CSV"); return;
+            }
+
+            const pyCode = `optimize_lp('${objType}', ${JSON.stringify(c)}, ${JSON.stringify(A)}, ${JSON.stringify(b)})`;
+            
+            try {
+                const res = JSON.parse(await pyodide.runPythonAsync(pyCode));
+                const resBox = document.getElementById('opt-result-box');
+                const ansBox = document.getElementById('opt-ans');
+                
+                if (res.status === 'error') {
+                    resBox.classList.remove('hidden');
+                    resBox.classList.replace('bg-indigo-50', 'bg-rose-50');
+                    ansBox.innerHTML = `⚠️ Error: ${res.msg}`;
+                    return;
+                }
+                
+                resBox.classList.remove('hidden');
+                resBox.classList.replace('bg-rose-50', 'bg-indigo-50');
+                ansBox.innerHTML = `x₁ = ${res.x[0].toFixed(2)}, x₂ = ${res.x[1].toFixed(2)} <br> Z* = ${res.z.toFixed(2)}`;
+
+                // Extremely simplified 2D plotting logic for demonstration
+                // In a full production system, we'd compute the exact polygon vertices
+                const x_vals = [0, 50]; 
+                let shapes = [];
+                let traces = [];
+                
+                A.forEach((row, i) => {
+                    let y_vals = x_vals.map(x => (b[i] - row[0]*x) / row[1]);
+                    traces.push({x: x_vals, y: y_vals, mode: 'lines', name: `Cons ${i+1}`, line: {dash: 'dash'}});
+                });
+                
+                // Optimal Point
+                traces.push({
+                    x: [res.x[0]], y: [res.x[1]], mode: 'markers+text', 
+                    name: 'Optimal (⭐)', text: ['⭐ Optimal'], textposition: 'top right',
+                    marker: {size: 15, color: '#f59e0b', symbol: 'star'}
+                });
+
+                Plotly.newPlot('opt-plot', traces, {
+                    template: 'plotly_white', font: {family: 'Inter'},
+                    margin: {l: 40, r: 20, t: 20, b: 30},
+                    xaxis: {range: [0, Math.max(res.x[0]*2, 10)]},
+                    yaxis: {range: [0, Math.max(res.x[1]*2, 10)]}
+                });
+
+            } catch (err) {
+                console.error("Opt Error:", err);
+            }
+        }
+
+        function loadVecPreset() {
+            vDim = document.getElementById('vec-dim').value;
+            const presetSelect = document.getElementById('vec-preset');
+            
+            if (vDim === '2d') {
+                presetSelect.innerHTML = `
+                    <option value="vortex">Vortex (Circulation)</option>
+                    <option value="source">Source/Sink (Divergence)</option>
+                    <option value="saddle">Saddle Point (Dynamics)</option>
+                `;
+            } else {
+                presetSelect.innerHTML = `
+                    <option value="helix">Helical Flow (Tornado)</option>
+                    <option value="magnetic">Magnetic Wire (Current)</option>
+                `;
+            }
+            if(pyodideReady) runVectorField();
+        }
+
+        async function runVectorField() {
+            if (!pyodideReady) return;
+            const preset = document.getElementById('vec-preset').value;
+            const pyCode = `calc_vector_field('${preset}', '${vDim}')`;
+            
+            try {
+                const res = JSON.parse(await pyodide.runPythonAsync(pyCode));
+                
+                if (res.dim === '2d') {
+                    // Create Quiver plot (Arrows) using scatter lines
+                    // Note: Plotly doesn't have a native 2d quiver, we simulate it or use heatmap + arrows
+                    // For simplicity and aesthetics, we'll plot the Heatmap and some streamlines
+                    
+                    const traceHeat = {
+                        z: res.Heat, x: res.x, y: res.y,
+                        type: 'heatmap', colorscale: 'RdBu',
+                        colorbar: {title: res.heat_name}
+                    };
+                    
+                    Plotly.newPlot('vec-plot', [traceHeat], {
+                        template: 'plotly_white', font: {family: 'Inter'},
+                        title: `2D Vector Field + ${res.heat_name} Heatmap`,
+                        xaxis: {constrain: 'domain'}, yaxis: {scaleanchor: 'x'}
+                    });
+                } else {
+                    // 3D Cone plot
+                    const traceCone = {
+                        type: 'cone',
+                        x: res.X, y: res.Y, z: res.Z,
+                        u: res.U, v: res.V, w: res.W,
+                        colorscale: 'Viridis', sizemode: 'absolute', sizeref: 0.8
+                    };
+                    
+                    Plotly.newPlot('vec-plot', [traceCone], {
+                        template: 'plotly_white', font: {family: 'Inter'},
+                        title: '3D Vector Field (Cones)',
+                        scene: {camera: {eye: {x: 1.2, y: 1.2, z: 1.0}}}
+                    });
+                }
+            } catch (err) {
+                console.error("Vector Error:", err);
+            }
+        }
+
+        // Initialize on load
+        window.addEventListener('load', () => {
+            initPyodide();
+        });
+    </script>
+</body>
+</html>
